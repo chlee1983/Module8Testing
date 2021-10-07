@@ -7,25 +7,38 @@ from torch.optim import SGD
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
+import torch.nn.functional as F
+
+classes = ('我', '与', '相', '祖', '田', '九', '十', '二', '团', '.')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 training_dataset_path = './train'
-val_dataset_path = './validation'
+# val_dataset_path = './validation'
 original_dataset_path = './label'
-
+batchSize = 216
 datasets_transforms = transforms.Compose([transforms.ToTensor()])
 
 training_dataset = torchvision.datasets.ImageFolder(root=training_dataset_path, transform=datasets_transforms)
-validation_dataset = torchvision.datasets.ImageFolder(root=val_dataset_path, transform=datasets_transforms)
+# validation_dataset = torchvision.datasets.ImageFolder(root=val_dataset_path, transform=datasets_transforms)
 original_dataset = torchvision.datasets.ImageFolder(root=original_dataset_path, transform=datasets_transforms)
 
-
-# training_loader = torch.utils.data.DataLoader(dataset=training_dataset, batch_size=32, shuffle=True)
+training_loader = torch.utils.data.DataLoader(dataset=training_dataset, batch_size=batchSize, shuffle=True)
 # validation_loader = torch.utils.data.DataLoader(dataset=validation_dataset, batch_size=32, shuffle=True)
-# original_loader = torch.utils.data.DataLoader(dataset=original_dataset, batch_size=32, shuffle=True)
+original_loader = torch.utils.data.DataLoader(dataset=original_dataset, batch_size=batchSize, shuffle=True)
 
-
+#
+# def imshow(img):
+#     npimg = img.numpy()
+#     plt.imshow(np.transpose(npimg, (1, 2, 0)))
+#     plt.show()
+#
+#
+# dataiter = iter(training_loader)
+# images, labels = dataiter.next()
+#
+# imshow(torchvision.utils.make_grid(images))
+# print(' '.join('%2s' % classes[labels[j]] for j in range(216)))
 # for images, _ in training_loader:
 #     tr_image_count_in_a_batch = images.size(0)
 #     print("training images " + str(tr_image_count_in_a_batch))
@@ -35,95 +48,52 @@ original_dataset = torchvision.datasets.ImageFolder(root=original_dataset_path, 
 #     print("validation images " + str(tr_image_count_in_a_batch))
 
 
-class MyNN(Dataset):
-    def __init__(self, x, y):
-        x = x.float()
-        x = x.view(-1, 102 * 102)
-        self.x, self.y = x, y
+class Net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
 
-    """contains logic for what should be returned when ask for the ix-th data points
-    (ix will be an integer between 0 and __len__)"""
-
-    def __getitem__(self, ix):
-        x, y = self.x[ix], self.y[ix]
-        return x.to(device), y.to(device)
-
-    # specify the number of data points in the __len__ method (length of x)
-    def __len__(self):
-        return len(self.x)
-
-
-def get_data():
-    train = MyNN(training_dataset, original_dataset)
-    trn_dl = DataLoader(train, batch_size=32, shuffle=True)
-    return trn_dl
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
 
 
-def get_model():
-    model = nn.Sequential(nn.Linear(28 * 28, 1000),
-                          nn.ReLU(),
-                          nn.Linear(1000, 10)).to(device)
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = SGD(model.parameters(), lr=1e-2)
-    return model, loss_fn, optimizer
+net = Net()
+criterion = nn.CrossEntropyLoss()
+optimizer = SGD(net.parameters(), lr=0.001, momentum=0.9)
 
 
-def train_batch(x, y, model, optimizer, loss_fn):
-    model.train()
-    # call the model like any python function on your batch of inputs
-    prediction = model(x)
-    # compute loss
-    batch_loss = loss_fn(prediction, y)
-    # based on the forward pass in model(x) compute all the gradients of 'model.parameters()'
-    batch_loss.backward()
-    # apply new weights = f(old-weights, old-weight-gradients) where "f" is the optimizer
-    optimizer.step()
-    # flush gradients memory for next batch of calculations
-    optimizer.zero_grad()
-    return batch_loss.item()
+for epoch in range(2):  # loop over the dataset multiple times
 
+    running_loss = 0.0
+    for i, data in enumerate(training_loader, 0):
+        # get the inputs; data is a list of [inputs, labels]
+        inputs, labels = data
 
-trn_dl = get_data()
-model, loss_fn, optimizer = get_model()
-losses, accuracies = [], []
+        # zero the parameter gradients
+        optimizer.zero_grad()
 
-#
-# @torch.no_grad()
-# def accuracy(x, y, model):
-#     model.eval()
-#     # get the prediction matrix for a tensor of 'x' images
-#     prediction = model(x)
-#     # compute if the location of maximum in each row coincides with ground truth
-#     max_values, argmaxes = prediction.max(-1)
-#     is_correct = argmaxes == y
-#     return is_correct.cpu().numpy().tolist()
-#
-#
-# for epoch in range(5):
-#     print(epoch)
-#     epoch_losses, epoch_accuracies = [], []
-#     for ix, batch in enumerate(iter(trn_dl)):
-#         x, y = batch
-#         batch_loss = train_batch(x, y, model, optimizer, loss_fn)
-#         epoch_losses.append(batch_loss)
-#     epoch_loss = np.array(epoch_losses).mean()
-#     for ix, batch in enumerate(iter(trn_dl)):
-#         x, y = batch
-#         is_correct = accuracy(x, y, model)
-#         epoch_accuracies.extend(is_correct)
-#     epoch_accuracy = np.mean(epoch_accuracies)
-#     losses.append(epoch_loss)
-#     accuracies.append(epoch_accuracy)
-#
-# epochs = np.arange(5) + 1
-# plt.figure(figsize=(20, 5))
-# plt.subplot(121)
-# plt.title('Loss value over increasing epochs')
-# plt.plot(epochs, losses, label='Training Loss')
-# plt.legend()
-# plt.subplot(122)
-# plt.title('Accuracy value over increasing epochs')
-# plt.plot(epochs, accuracies, label='Training Accuracies')
-# plt.gca().set_yticklabels(['{:.0f}%'.format(x * 100) for x in plt.gca().get_yticks()])
-# plt.legend()
-# plt.show()
+        # forward + backward + optimize
+        outputs = net(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        # print statistics
+        running_loss += loss.item()
+        if i % 2000 == 1999:    # print every 2000 mini-batches
+            print('[%d, %5d] loss: %.3f' %
+                  (epoch + 1, i + 1, running_loss / 2000))
+            running_loss = 0.0
+
+print('Finished Training')
