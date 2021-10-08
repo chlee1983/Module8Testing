@@ -8,9 +8,6 @@ import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 import torchvision.models as models
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-from torchvision import datasets
-
 # importing dataset
 ori_data_folder = './label'
 train_data_folder = './train'
@@ -40,24 +37,16 @@ def show_transformed_images(dataset):
 show_transformed_images(train_dataset)
 '''
 
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=6, shuffle=True)
 original_loader = torch.utils.data.DataLoader(original_dataset, batch_size=32, shuffle=True)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=32, shuffle=False)
-
-
-def set_device():
-    if torch.cuda.is_available():
-        dev = 'cuda:0'
-    else:
-        dev = 'cpu'
-    return torch.device(dev)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def train_nn(model, train_loader, test_loader, criterion, optimizer, n_epochs):
-    device = set_device()
 
     for epoch in range(n_epochs):
-        print("Epoch number %d" %(epoch+1))
+        # print("Epoch number %d" %(epoch + 1))
         model.train()
         running_loss = 0.0
         running_correct = 0.0
@@ -65,27 +54,26 @@ def train_nn(model, train_loader, test_loader, criterion, optimizer, n_epochs):
 
         for data in train_loader:
             images, labels = data
-            images = images.to(device)
-            labels = labels.to(device)
+            # images = images.to(device)
+            # labels = labels.to(device)
             total += labels.size(0)
-
+            # print(f"labels: ", labels)
             optimizer.zero_grad()
-
             outputs = model(images)
-
             _, predicted = torch.max(outputs.data, 1)
+            print(predicted)
 
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-            running_correct += (labels==predicted).sum().item()
+            running_correct += (labels == predicted).sum().item()
 
-        epoch_loss = running_loss/len(train_loader)
+        epoch_loss = running_loss / len(train_loader)
         epoch_acc = 100 * running_correct / total
 
         print("- Testing dataset. Got %d out of %d images correctly (%.3f%%). Epoch loss: %.3f"
-              %(running_correct, total, epoch_acc, epoch_loss))
+              % (running_correct, total, epoch_acc, epoch_loss))
 
         evaluate_model_on_test_set(model, test_loader)
 
@@ -97,7 +85,6 @@ def evaluate_model_on_test_set(model, test_loader):
     model.eval()
     predicted_correctly_on_epoch = 0
     total = 0
-    device = set_device()
 
     with torch.no_grad():
         for data in test_loader:
@@ -105,23 +92,19 @@ def evaluate_model_on_test_set(model, test_loader):
             images = images.to(device)
             labels = labels.to(device)
             total += labels.size(0)
-
             outputs = model(images)
-
             _, predicted = torch.max(outputs.data, 1)
-
             predicted_correctly_on_epoch += (predicted == labels).sum().item()
 
     epoch_acc = 100.0 * predicted_correctly_on_epoch / total
     print("- Training dataset. Got %d out of %d images correctly (%.3f%%)"
-              %(predicted_correctly_on_epoch, total, epoch_acc))
+          % (predicted_correctly_on_epoch, total, epoch_acc))
 
 
 resnet18_model = models.resnet18(pretrained=True)
 num_features = resnet18_model.fc.in_features
 number_of_classes = 40
 resnet18_model.fc = nn.Linear(num_features, number_of_classes)
-device = set_device()
 resnet18_model = resnet18_model.to(device)
 loss_fn = nn.CrossEntropyLoss()
 # momentum = accelerate the gradient vectors in the right direction, leading to faster converging
