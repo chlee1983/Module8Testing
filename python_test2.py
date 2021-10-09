@@ -37,14 +37,14 @@ def show_transformed_images(dataset):
 show_transformed_images(train_dataset)
 '''
 
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=6, shuffle=True)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
 original_loader = torch.utils.data.DataLoader(original_dataset, batch_size=32, shuffle=True)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=32, shuffle=False)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def train_nn(model, train_loader, test_loader, criterion, optimizer, n_epochs):
-
+    best_acc = 0
     for epoch in range(n_epochs):
         # print("Epoch number %d" %(epoch + 1))
         model.train()
@@ -75,7 +75,11 @@ def train_nn(model, train_loader, test_loader, criterion, optimizer, n_epochs):
         print("- Testing dataset. Got %d out of %d images correctly (%.3f%%). Epoch loss: %.3f"
               % (running_correct, total, epoch_acc, epoch_loss))
 
-        evaluate_model_on_test_set(model, test_loader)
+        test_dataset_acc = evaluate_model_on_test_set(model, test_loader)
+
+        if test_dataset_acc > best_acc:
+            best_acc = test_dataset_acc
+            save_checkpoint(model, epoch, optimizer, best_acc)
 
     print("Finished")
     return model
@@ -100,10 +104,22 @@ def evaluate_model_on_test_set(model, test_loader):
     print("- Training dataset. Got %d out of %d images correctly (%.3f%%)"
           % (predicted_correctly_on_epoch, total, epoch_acc))
 
+    return epoch_acc
+
+
+def save_checkpoint(model, epoch, optimizer, best_acc):
+    state = {
+        'epoch': epoch + 1,
+        'model': model.state_dict(),
+        'best accuracy': best_acc,
+        'optimizer': optimizer.state_dict(),
+    }
+    torch.save(state, 'model_best_checkpoint.pth.tar')
+
 
 resnet18_model = models.resnet18(pretrained=True)
 num_features = resnet18_model.fc.in_features
-number_of_classes = 40
+number_of_classes = 651
 resnet18_model.fc = nn.Linear(num_features, number_of_classes)
 resnet18_model = resnet18_model.to(device)
 loss_fn = nn.CrossEntropyLoss()
@@ -111,4 +127,16 @@ loss_fn = nn.CrossEntropyLoss()
 # weight decay = help with prevent overfitting
 optimizer = optim.SGD(resnet18_model.parameters(), lr=0.01, momentum=0.9, weight_decay=0.003)
 
-train_nn(resnet18_model, train_loader, val_loader, loss_fn, optimizer, 10)
+train_nn(resnet18_model, train_loader, val_loader, loss_fn, optimizer, 20)
+
+checkpoint = torch.load('model_best_checkpoint.pth.tar')
+print(checkpoint['epoch'])
+print(checkpoint['best accuracy'])
+
+resnet18_model = models.resnet18()
+num_features = resnet18_model.fc.in_features
+number_of_classes = 651
+resnet18_model.fc = nn.Linear(num_features, number_of_classes)
+resnet18_model.load_state_dict(checkpoint['model'])
+
+torch.save(resnet18_model, 'best_model.pth')
